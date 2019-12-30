@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.metrics import r2_score
 from sklearn.metrics import mean_absolute_error
 from sklearn.metrics import mean_squared_error
 
@@ -66,18 +65,39 @@ class BasicModel:
         if self.scaler is None:
             raise Exception('No available scaler, please train a new model or load from disk.')
 
+    # noinspection PyDictCreation
     @staticmethod
     def evaluate(y_true, y_pred, delta) -> dict:
+        """
+        evaluate the trained model
+        :param y_true: ground truth label
+        :param y_pred: predicted result
+        :param delta: delta for computing mape
+        :return: a dict for all performance metrics: region 1, region 2 and all
+        """
         metrics = {}
         metrics['mae'] = mean_absolute_error(y_true, y_pred)
+        metrics['mae_1'] = mean_absolute_error(y_true[:, 0], y_pred[:, 0])
+        metrics['mae_2'] = mean_absolute_error(y_true[:, 1], y_pred[:, 1])
         metrics['mse'] = mean_squared_error(y_true, y_pred)
-        metrics['r2'] = r2_score(y_true, y_pred)
+        metrics['mse_1'] = mean_squared_error(y_true[:, 0], y_pred[:, 0])
+        metrics['mse_2'] = mean_squared_error(y_true[:, 1], y_pred[:, 1])
         if delta is not None:
             metrics['mape'] = BasicModel.mean_absolute_percentage_error(y_true, y_pred, delta)
+            metrics['mape_1'] = BasicModel.mean_absolute_percentage_error(y_true[:, 0], y_pred[:, 0], delta[:, 0])
+            metrics['mape_2'] = BasicModel.mean_absolute_percentage_error(y_true[:, 1], y_pred[:, 1], delta[:, 1])
         return metrics
 
     @staticmethod
     def mean_absolute_percentage_error(y_true, y_pred, delta, delta_epsilon=1e-3) -> float:
+        """
+        compute mean_absolute_percentage_error based on delta
+        :param y_true: ground truth label
+        :param y_pred: predicted result
+        :param delta: delta computed by y_true
+        :param delta_epsilon:
+        :return: mape
+        """
         diff = np.abs((y_true - y_pred) / np.clip(np.abs(y_true), 1e-6, None))
         delta = np.clip(np.abs(delta), delta_epsilon, None)
         return 100. * float(np.mean(diff / delta))
