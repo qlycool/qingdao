@@ -17,29 +17,23 @@ class BasicModel:
             raise Exception('X_test is None or len == 1.')
         pass
 
-    def save(self, model_saved_path: str, scaler_saved_name: str):
+    def save(self, saved_path: str):
         """
         Save model to disk
-        :param scaler_saved_name: path and filename to save scaler
-        :param model_saved_path: path and filename to save model
+        :param saved_path: path and filename to save model and scaler
         """
         self.check_model_state()
-        if model_saved_path is None:
-            raise Exception('Model saved path is None.')
-        if scaler_saved_name is None:
-            raise Exception('Scaler saved path is None.')
+        if saved_path is None:
+            raise Exception('Saved path is None.')
         pass
 
-    def load(self, model_saved_path: str, scaler_saved_name: str):
+    def load(self, loaded_path: str):
         """
         load model from disk
-        :param scaler_saved_name: path and filename to load scaler
-        :param model_saved_path: path and filename to load
+        :param loaded_path: path and filename to load model and scaler
         """
-        if model_saved_path is None:
-            raise Exception('Model loaded path is None.')
-        if scaler_saved_name is None:
-            raise Exception('Scaler loaded path is None.')
+        if loaded_path is None:
+            raise Exception('Loaded path is None.')
         pass
 
     def train_validate(self, X, y, delta, test_size=0.2):

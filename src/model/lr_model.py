@@ -38,17 +38,18 @@ class LRModel(BasicModel):
             X_test = self.scaler.transform(X_test)
 
         pred = self.model.predict(X_test)
+        # TODO: 为了防止预测过大，输出的结果需要进行clip
         return pred
 
-    def save(self, model_saved_path: str, scaler_saved_name: str):
-        super().save(model_saved_path, scaler_saved_name)
-        dump(self.model, model_saved_path)
-        dump(self.scaler, scaler_saved_name)
+    def save(self, saved_path: str):
+        super().save(saved_path)
+        dump(self.model, saved_path + '.joblib')
+        dump(self.scaler, saved_path + '.pkl')
 
-    def load(self, model_saved_path: str, scaler_saved_name: str):
-        super().load(model_saved_path, scaler_saved_name)
-        self.model = load(model_saved_path)
-        self.model = load(scaler_saved_name)
+    def load(self, loaded_path: str):
+        super().load(loaded_path)
+        self.model = load(loaded_path + '.joblib')
+        self.model = load(loaded_path + '.pkl')
 
     def train_validate(self, X, y, delta=None, mapping=None, test_size=0.2):
         super().train_validate(X, y, delta, test_size)

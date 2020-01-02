@@ -32,6 +32,13 @@ LABEL_RANGE = 20  # Label选取的区间范围
 SETTING_LAG = 20  # 设定值和实际值的时延
 REACTION_LAG = 10  # 实际值调整后，水分变化的时延
 
+MODEL_TRANSITION_CRITERION = 0.1
+TRANSITION_FEATURE_RANGE = 20  # Transition 特征选取的区间范围
+TRANSITION_LABEL_RANGE = 10  # Transition Label 选取的区间范围
+TRANSITION_SPLIT_NUM = 4  # Transition 特征选取分割区间的数量
+STABLE_UNAVAILABLE = 200  # 出口水分不可用阶段
+TRANSITION_SIZE = 400  # 定义 Transition 的长度
+
 VERBOSE = True
 
 
@@ -69,10 +76,7 @@ def data_clean(data: pd.DataFrame) -> pd.DataFrame:
     # 5. 过滤批次为 '000'的数据
     data = data[data['批次'] != '000']
 
-    # 6. 只考虑生产阶段的数据
-    data = data[data['设备状态'] == '生产']
-
-    # 7. 计算出口水分差值
+    # 6. 计算出口水分差值
     data['出口水分差值'] = data['出口水分'] - data['出口水分设定值']
     return data
 
@@ -105,23 +109,25 @@ def split_data_by_brand(data: pd.DataFrame) -> Tuple[dict, dict]:
     return data_per_brand, criterion
 
 
-def calc_feature(item_: pd.DataFrame, feature_end_1: int, feature_end_2: int) -> np.array:
+def calc_feature(item_: pd.DataFrame, feature_end_1: int, feature_end_2: int, feature_range: int, split_num: int) -> np.array:
     """
     calc feature for each sample data
     :param item_: sample data
     :param feature_end_1: the end time for region 1 to calc feature
     :param feature_end_2: the end time for region 2 to calc feature
+    :param feature_range: feature calc range
+    :param split_num: how many splits after splitting
     :return: feature array
     """
-    feature_start_1 = feature_end_1 - FEATURE_RANGE
-    feature_start_2 = feature_end_2 - FEATURE_RANGE
+    feature_start_1 = feature_end_1 - feature_range
+    feature_start_2 = feature_end_2 - feature_range
 
     feature_slice_1 = item_[feature_column_1].iloc[feature_start_1: feature_end_1].values
     feature_slice_2 = item_[feature_column_2].iloc[feature_start_2: feature_end_2].values
 
     # shape = (SPLIT_NUM, FEATURE_RANGE / SPLIT_NUM, FEATURE_NUM)
-    feature_slice_1 = np.array(np.vsplit(feature_slice_1, SPLIT_NUM))
-    feature_slice_2 = np.array(np.vsplit(feature_slice_2, SPLIT_NUM))
+    feature_slice_1 = np.array(np.vsplit(feature_slice_1, split_num))
+    feature_slice_2 = np.array(np.vsplit(feature_slice_2, split_num))
 
     # shape = (*, SPLIT_NUM, FEATURE_NUM)
     feature = np.concatenate([
@@ -188,7 +194,7 @@ def calc_current(item_: pd.DataFrame, start_1: int, start_2: int) -> np.array:
     :param start_2: the start time for region 2 to calc current value
     :return:  a array with exactly 2 number: current temperature of region 1 and current temperature of region 2
     """
-    return np.array([item_[label_column_1].iloc[start_1].values, item_[label_column_2].iloc[start_2].values])
+    return np.array([item_[label_column_1].iloc[start_1].values[0], item_[label_column_2].iloc[start_2].values[0]])
 
 
 def calc_delta(item_: pd.DataFrame, start_1: int, end_1: int, start_2: int, end_2: int) -> np.array:
@@ -198,9 +204,9 @@ def calc_delta(item_: pd.DataFrame, start_1: int, end_1: int, start_2: int, end_
     return np.array([delta_1, delta_2]).ravel()
 
 
-def generate_brand_training_data(item_brand, brand_index, setting):
+def generate_brand_transition_training_data(item_brand, brand_index, setting) -> Tuple[np.array, np.array, np.array, np.array]:
     """
-    generate training data and label for one brand,
+    generate training data and label for one brand in 'transition' stage
     this method is time consuming
     :param item_brand: the brand data to generate
     :param brand_index: brand index
@@ -218,11 +224,12 @@ def generate_brand_training_data(item_brand, brand_index, setting):
     brand_mapping = []
 
     for batch_index, item_batch in enumerate(item_brand):
+        item_batch = item_batch.iloc[:TRANSITION_SIZE, :]
         item_batch = item_batch.reset_index(drop=True)
         length = len(item_batch)
         humidity = item_batch['出口水分'].values
 
-        stable_index = np.abs(humidity - setting) < MODEL_CRITERION
+        stable_index = np.abs(humidity - setting) < MODEL_TRANSITION_CRITERION
         # No stable area in this batch
         if np.sum(stable_index) == 0 or len(stable_index) < STABLE_WINDOWS_SIZE:
             continue
@@ -230,7 +237,7 @@ def generate_brand_training_data(item_brand, brand_index, setting):
         stable_index = np.where(stable_index == STABLE_WINDOWS_SIZE)[0]
 
         for stable_start in stable_index:
-            if stable_start < REACTION_LAG + TIME_IN_ROLLER * 3 or stable_start >= length - STABLE_WINDOWS_SIZE:
+            if stable_start < STABLE_UNAVAILABLE + TRANSITION_FEATURE_RANGE or stable_start >= length - STABLE_WINDOWS_SIZE:
                 continue
             adjust_end_2 = stable_start - REACTION_LAG - SETTING_LAG
             adjust_start_2 = adjust_end_2 - LABEL_RANGE
@@ -243,7 +250,9 @@ def generate_brand_training_data(item_brand, brand_index, setting):
                 calc_feature(
                     item_batch,
                     adjust_start_1,
-                    adjust_start_2
+                    adjust_start_2,
+                    TRANSITION_FEATURE_RANGE,
+                    TRANSITION_SPLIT_NUM
                 )
             )
 
@@ -288,11 +297,105 @@ def generate_brand_training_data(item_brand, brand_index, setting):
     return brand_train_data, brand_train_label, brand_delta, brand_mapping,
 
 
-def generate_all_training_data(data_per_brand: dict, criterion: dict) -> np.array:
+def generate_brand_produce_training_data(item_brand, brand_index, setting) -> Tuple[np.array, np.array, np.array, np.array]:
+    """
+    generate training data and label for one brand in 'produce' stage
+    this method is time consuming
+    :param item_brand: the brand data to generate
+    :param brand_index: brand index
+    :param setting: the setting value
+    :return:
+        brand_train_data: all training data for this brand, shape=(N, M),
+            which N denotes the number of training data, M denotes the number of feature
+        brand_train_label: all training label for this brand, shape=(N, 2)
+        brand_delta: delta info
+        brand_mapping: mapping info
+    """
+    brand_train_data = []
+    brand_train_label = []
+    brand_delta = []
+    brand_mapping = []
+
+    for batch_index, item_batch in enumerate(item_brand):
+        item_batch = item_batch.iloc[TRANSITION_SIZE:, :]
+        item_batch = item_batch.reset_index(drop=True)
+        length = len(item_batch)
+        humidity = item_batch['出口水分'].values
+
+        stable_index = np.abs(humidity - setting) < MODEL_CRITERION
+        # No stable area in this batch
+        if np.sum(stable_index) == 0 or len(stable_index) < STABLE_WINDOWS_SIZE:
+            continue
+        stable_index = np.sum(rolling_window(stable_index, STABLE_WINDOWS_SIZE), axis=1)
+        stable_index = np.where(stable_index == STABLE_WINDOWS_SIZE)[0]
+
+        for stable_start in stable_index:
+            if stable_start < REACTION_LAG + TIME_IN_ROLLER * 3 or stable_start >= length - STABLE_WINDOWS_SIZE:
+                continue
+            adjust_end_2 = stable_start - REACTION_LAG - SETTING_LAG
+            adjust_start_2 = adjust_end_2 - LABEL_RANGE
+
+            adjust_end_1 = adjust_end_2 - TIME_IN_ROLLER
+            adjust_start_1 = adjust_start_2 - TIME_IN_ROLLER
+
+            # store feature
+            brand_train_data.append(
+                calc_feature(
+                    item_batch,
+                    adjust_start_1,
+                    adjust_start_2,
+                    FEATURE_RANGE,
+                    SPLIT_NUM
+                )
+            )
+
+            # store label
+            brand_train_label.append(
+                calc_label(
+                    item_batch,
+                    adjust_start_1,
+                    adjust_end_1,
+                    adjust_start_2,
+                    adjust_end_2
+                )
+            )
+
+            # store mapping info
+            brand_mapping.append([
+                brand_index,
+                batch_index,
+                adjust_start_1,
+                adjust_end_1,
+                adjust_start_2,
+                adjust_end_2,
+                stable_start
+            ])
+
+            # store delta value
+            brand_delta.append(
+                calc_delta(
+                    item_batch,
+                    adjust_start_1,
+                    adjust_end_1,
+                    adjust_start_2,
+                    adjust_end_2
+                )
+            )
+
+    brand_train_data = np.array(brand_train_data)
+    brand_train_label = np.array(brand_train_label)
+    brand_mapping = np.array(brand_mapping)
+    brand_delta = np.array(brand_delta)
+
+    return brand_train_data, brand_train_label, brand_delta, brand_mapping,
+
+
+def generate_all_training_data(data_per_brand: dict, criterion: dict, stage: str) -> Tuple[np.array, np.array, np.array, np.array]:
     """
     generate training data and label for all brand
     :param data_per_brand: all brand data
     :param criterion: criterion for each  brand
+    :param stage: including 'head', 'transition', 'produce'
     :return:
         train_data: all training data, shape=(N, M),
             which N denotes the number of training data, M denotes the number of feature
@@ -304,23 +407,43 @@ def generate_all_training_data(data_per_brand: dict, criterion: dict) -> np.arra
     train_label_list = []
     delta_list = []
     mapping_list = []
+    if stage == 'produce':
+        for brand_index, brand in enumerate(data_per_brand):
+            start = datetime.now()
 
-    for brand_index, brand in enumerate(data_per_brand):
-        start = datetime.now()
+            brand_train_data, brand_train_label, brand_delta, brand_mapping = generate_brand_produce_training_data(
+                data_per_brand[brand],
+                brand_index,
+                criterion[brand]
+            )
+            train_data_list.append(brand_train_data)
+            train_label_list.append(brand_train_label)
+            delta_list.append(brand_delta)
+            mapping_list.append(brand_mapping)
 
-        brand_train_data, brand_train_label, brand_delta, brand_mapping = generate_brand_training_data(
-            data_per_brand[brand],
-            brand_index,
-            criterion[brand])
-        train_data_list.append(brand_train_data)
-        train_label_list.append(brand_train_label)
-        delta_list.append(brand_delta)
-        mapping_list.append(brand_mapping)
+            if VERBOSE:
+                print('{}: len={}, time={}s'.format(brand, len(brand_train_data), (datetime.now() - start).seconds))
+        return concatenate(train_data_list), concatenate(train_label_list), concatenate(delta_list), concatenate(mapping_list)
 
-        if VERBOSE:
-            print('{}: len={}, time={}s'.format(brand, len(brand_train_data), (datetime.now() - start).seconds))
+    elif stage == 'transition':
+        for brand_index, brand in enumerate(data_per_brand):
+            start = datetime.now()
 
-    return concatenate(train_data_list), concatenate(train_label_list), concatenate(delta_list), concatenate(mapping_list)
+            brand_train_data, brand_train_label, brand_delta, brand_mapping = generate_brand_transition_training_data(
+                data_per_brand[brand],
+                brand_index,
+                criterion[brand]
+            )
+            train_data_list.append(brand_train_data)
+            train_label_list.append(brand_train_label)
+            delta_list.append(brand_delta)
+            mapping_list.append(brand_mapping)
+
+            if VERBOSE:
+                print('{}: len={}, time={}s'.format(brand, len(brand_train_data), (datetime.now() - start).seconds))
+        return concatenate(train_data_list), concatenate(train_label_list), concatenate(delta_list), concatenate(mapping_list)
+    elif stage == 'head':
+        pass
 
 
 def concatenate(data_: list) -> np.array:
@@ -342,14 +465,16 @@ def generate_test_data(data_: pd.DataFrame) -> np.array:
     adjust_start_2 = min_len - LABEL_RANGE
     adjust_start_1 = adjust_start_2 - TIME_IN_ROLLER
 
-    feature = calc_feature(data_, adjust_start_1, adjust_start_2)
+    feature = calc_feature(data_, adjust_start_1, adjust_start_2, FEATURE_RANGE, SPLIT_NUM)
     return feature
 
 
-def generate_validation_data(item):
+def generate_validation_data(item: pd.DataFrame, stage: str) -> Tuple[np.array, np.array, np.array]:
     """
+    TODO: add a demo to call this method
     generate real test data for one batch data at each time t
     :param item: one batch data
+    :param stage: including 'head', 'transition', 'produce'
     :return:
         final_X_test: shape=(N, M), which N denotes the number of training data, M denotes the number of feature
         final_y_test: training label for evaluation, shape=(N, 2)
@@ -360,30 +485,52 @@ def generate_validation_data(item):
     final_y_test = []
     final_mapping = []
 
-    for item_index in range(TIME_IN_ROLLER + LABEL_RANGE + FEATURE_RANGE, length, 1):
-        adjust_end_2 = item_index
-        adjust_start_2 = adjust_end_2 - LABEL_RANGE
+    if stage == 'transition':
+        for item_index in range(TIME_IN_ROLLER + TRANSITION_FEATURE_RANGE, length, 1):
+            adjust_start_2 = item_index - LABEL_RANGE
+            adjust_start_1 = adjust_start_2 - TIME_IN_ROLLER
 
-        adjust_end_1 = adjust_end_2 - TIME_IN_ROLLER
-        adjust_start_1 = adjust_start_2 - TIME_IN_ROLLER
-
-        final_X_test.append(
-            calc_feature(
-                item,
-                adjust_start_1,
-                adjust_start_2
+            final_X_test.append(
+                calc_feature(
+                    item,
+                    adjust_start_1,
+                    adjust_start_2,
+                    TRANSITION_FEATURE_RANGE,
+                    TRANSITION_SPLIT_NUM
+                )
             )
-        )
 
-        final_y_test.append(
-            calc_label(
-                item,
-                adjust_start_1,
-                adjust_end_1,
-                adjust_start_2,
-                adjust_end_2
+            final_y_test.append(
+                calc_current(
+                    item,
+                    adjust_start_1,
+                    adjust_start_2,
+                )
             )
-        )
-        final_mapping.append([adjust_end_1, adjust_end_2])
+            final_mapping.append([adjust_start_1, adjust_start_2])
+    elif stage == 'produce':
+        for item_index in range(TIME_IN_ROLLER + FEATURE_RANGE, length, 1):
+            adjust_start_2 = item_index - LABEL_RANGE
+            adjust_start_1 = adjust_start_2 - TIME_IN_ROLLER
 
+            final_X_test.append(
+                calc_feature(
+                    item,
+                    adjust_start_1,
+                    adjust_start_2,
+                    FEATURE_RANGE,
+                    SPLIT_NUM
+                )
+            )
+
+            final_y_test.append(
+                calc_current(
+                    item,
+                    adjust_start_1,
+                    adjust_start_2,
+                )
+            )
+            final_mapping.append([adjust_start_1, adjust_start_2])
+    elif stage == 'head':
+        pass
     return np.array(final_X_test), np.array(final_y_test), np.array(final_mapping)
