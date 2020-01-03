@@ -1,10 +1,11 @@
 import os
 
 from src.manager.model_manager import load_best_model_prefix
-from src.data_processing.processing import read_data, data_clean, split_data_by_brand, generate_all_training_data
+from src.data_processing.processing import read_data, data_clean, split_data_by_brand, generate_all_training_data, generate_validation_data, \
+    predict_head, generate_head_dict
 from src.model.lr_model import LRModel
 from flask import Flask, jsonify, request
-
+import pandas as pd
 from src.config.config import MODEL_SAVE_DIR
 from src.utils.util import create_dir, get_current_time
 
@@ -13,6 +14,8 @@ app.config['SECRET_KEY'] = 'secret!'
 
 model_produce = LRModel()
 model_transition = LRModel()
+init_per_brand = {}
+stable_per_brand = {}
 
 
 def load_current_model_prefix(stage: str) -> str:
@@ -52,6 +55,17 @@ def api_train_val_model():
 
     model_produce.save(model_produce_save_path)
     model_transition.save(model_transition_save_path)
+
+    init_per_brand, stable_per_brand = generate_head_dict(data_per_brand, criterion)
+
+
+def validation(data_per_batch: pd.DataFrame):
+    test_produce, _ = generate_validation_data(data_per_batch, 'produce')
+    test_transition, _ = generate_validation_data(data_per_batch, 'transition')
+
+    pred_produce = model_produce.predict(test_produce)
+    pred_transition = model_transition.predict(test_transition)
+    pred_head = predict_head(data_per_batch, init_per_brand, stable_per_brand)
 
 
 @app.route('/api/predict')
