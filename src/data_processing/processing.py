@@ -481,7 +481,8 @@ def concatenate(data_: list) -> np.array:
     """
     result = data_[0]
     for i in range(1, len(data_)):
-        result = np.concatenate([result, data_[i]], axis=0)
+        if len(data_[i]) is not 0:
+            result = np.concatenate([result, data_[i]], axis=0)
     return result
 
 
