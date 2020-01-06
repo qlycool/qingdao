@@ -1,11 +1,12 @@
-from src.model.base import BasicModel
+from src.model.base import BasicLRModel
 from joblib import dump, load
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+import numpy as np
 
 
-class LRModel(BasicModel):
+class LRModel(BasicLRModel):
     def __init__(self, standardize=True):
         super().__init__()
         self.standardize = standardize
@@ -24,7 +25,7 @@ class LRModel(BasicModel):
             X = self.scaler.fit_transform(X)
         self.model.fit(X, y)
 
-    def predict(self, X_test):
+    def predict(self, X_test) -> np.array:
         """
         Predict using trained model
         :param X_test: test data, shape = (Sample number, Feature number)
@@ -38,7 +39,6 @@ class LRModel(BasicModel):
             X_test = self.scaler.transform(X_test)
 
         pred = self.model.predict(X_test)
-        # TODO: 为了防止预测过大，输出的结果需要进行clip
         return pred
 
     def save(self, saved_path: str):
@@ -51,7 +51,7 @@ class LRModel(BasicModel):
         self.model = load(loaded_path + '.joblib')
         self.model = load(loaded_path + '.pkl')
 
-    def train_validate(self, X, y, delta=None, mapping=None, test_size=0.2):
+    def train_validate(self, X, y, delta=None, mapping=None, test_size=0.2) -> dict:
         super().train_validate(X, y, delta, test_size)
         X_train, X_test, y_train, y_test, delta_train, delta_test, mapping_train, mapping_test = None, None, None, None, None, None, None, None
         if delta is None and mapping is None:

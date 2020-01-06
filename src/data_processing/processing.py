@@ -24,13 +24,13 @@ STABLE_WINDOWS_SIZE = 10  # 稳态的时长
 SPLIT_NUM = 10  # 特征选取分割区间的数量（需要被FEATURE_RANGE整除）
 TIME_IN_ROLLER = 70  # 烟丝在一个滚筒的时间
 MODEL_CRITERION = 0.05  # 模型标准，工艺标准为0.5
-FEATURE_RANGE = 70  # 特征选取的区间范围
+FEATURE_RANGE = 50  # 特征选取的区间范围
 LABEL_RANGE = 10  # Label选取的区间范围
 SETTING_LAG = 20  # 设定值和实际值的时延
 REACTION_LAG = 10  # 实际值调整后，水分变化的时延
 
-MODEL_TRANSITION_CRITERION = 0.1
-TRANSITION_FEATURE_RANGE = 20  # Transition 特征选取的区间范围
+MODEL_TRANSITION_CRITERION = 0.05
+TRANSITION_FEATURE_RANGE = 16  # Transition 特征选取的区间范围
 TRANSITION_SPLIT_NUM = 4  # Transition 特征选取分割区间的数量
 STABLE_UNAVAILABLE = 120  # 出口水分不可用阶段
 TRANSITION_SIZE = 400  # 定义 Transition 的长度
@@ -372,14 +372,13 @@ def generate_head_dict(data_per_brand: dict, criterion: dict, round_: bool = Tru
     init_value = {}
     stable_value = {}
     total_lag = SETTING_LAG + REACTION_LAG
-    for brand in data_per_brand['牌号'].unique():
-        item_brand = data_per_brand[data_per_brand['牌号'] == brand]
+    for brand in data_per_brand:
+        item_brand = data_per_brand[brand]
 
         init_per_batch = []
         stable_per_batch = []
 
-        for batch in item_brand['批次'].unique():
-            item_batch = item_brand[item_brand['批次'] == batch]
+        for item_batch in item_brand:
             if len(item_batch) <= 5:
                 continue
             item_batch['时间'] = item_batch['时间'].map(lambda x: format_time(x))
@@ -495,19 +494,19 @@ def predict_head(data_per_batch: pd.DataFrame, init_per_brand: dict, stable_per_
     :return: predicted value in head stage
     """
     range_ = STABLE_UNAVAILABLE + TRANSITION_FEATURE_RANGE
-    number = data_per_batch['牌号'].iloc[0]
+    brand = data_per_batch['牌号'].iloc[0]
     pred_head_one = []
     pred_head_two = []
     for i in range(range_):
         if i < 16:
-            pred_head_one.append(init_per_brand[number])
+            pred_head_one.append(init_per_brand[brand][0])
         else:
-            pred_head_one.append(stable_per_brand[number][0])
+            pred_head_one.append(stable_per_brand[brand][0])
 
         if i < 58:
-            pred_head_two.append(init_per_brand[number])
+            pred_head_two.append(init_per_brand[brand][1])
         else:
-            pred_head_two.append(stable_per_brand[number][1])
+            pred_head_two.append(stable_per_brand[brand][1])
 
     pred_head_one = np.round(pred_head_one, 3)
     pred_head_two = np.round(pred_head_two, 3)
@@ -523,7 +522,6 @@ def generate_validation_data(data_per_batch: pd.DataFrame, stage: str) -> Tuple[
         final_X_test: shape=(N, M), which N denotes the number of training data, M denotes the number of feature
         final_mapping: mapping info
     """
-
     final_X_test = []
     final_mapping = []
 
@@ -561,3 +559,21 @@ def generate_validation_data(data_per_batch: pd.DataFrame, stage: str) -> Tuple[
         return np.array(final_X_test), np.array(final_mapping)
     else:
         raise Exception('stage must in [transition, produce], now is ' + str(stage))
+
+
+def clip(pred: np.array, min_1: float, max_1: float, min_2: float, max_2: float) -> np.array:
+    """
+    clip the predicted to avoid over-estimated
+    :param pred: predicted values
+    :param min_1: min for region 1
+    :param max_1: max for region 1
+    :param min_2: min for region 2
+    :param max_2: max for region 1
+    :return: clipped values
+    """
+    if len(pred) is not 2:
+        raise Exception('Predicted value MUST have 2 value')
+
+    pred[0] = np.clip(pred[0], min_1, max_1)
+    pred[1] = np.clip(pred[1], min_2, max_2)
+    return pred

@@ -4,25 +4,11 @@ from sklearn.metrics import mean_squared_error
 
 
 class BasicModel:
-    def __init__(self):
-        self.model = None
-        self.scaler = None
-
-    def train(self, X, y):
-        pass
-
-    def predict(self, X_test):
-        self.check_model_state()
-        if X_test is None or len(X_test) == 0:
-            raise Exception('X_test is None or len == 1.')
-        pass
-
     def save(self, saved_path: str):
         """
         Save model to disk
         :param saved_path: path and filename to save model and scaler
         """
-        self.check_model_state()
         if saved_path is None:
             raise Exception('Saved path is None.')
         pass
@@ -36,6 +22,33 @@ class BasicModel:
             raise Exception('Loaded path is None.')
         pass
 
+    def reset(self):
+        """
+        reset model
+        """
+        pass
+
+    def check_model_state(self):
+        """
+        check model state before do some action
+        """
+        pass
+
+
+class BasicLRModel(BasicModel):
+    def __init__(self):
+        self.model = None
+        self.scaler = None
+
+    def train(self, X, y):
+        pass
+
+    def predict(self, X_test):
+        self.check_model_state()
+        if X_test is None or len(X_test) == 0:
+            raise Exception('X_test is None or len == 1.')
+        pass
+
     def train_validate(self, X, y, delta, test_size=0.2):
         """
         Train and val this model for evaluation
@@ -47,6 +60,7 @@ class BasicModel:
         pass
 
     def reset(self):
+        super().reset()
         """
         reset model
         """
@@ -54,6 +68,7 @@ class BasicModel:
         self.scaler = None
 
     def check_model_state(self):
+        super().check_model_state()
         if self.model is None:
             raise Exception('No available model, please train a new model or load from disk.')
         if self.scaler is None:
@@ -77,9 +92,9 @@ class BasicModel:
         metrics['mse_1'] = mean_squared_error(y_true[:, 0], y_pred[:, 0])
         metrics['mse_2'] = mean_squared_error(y_true[:, 1], y_pred[:, 1])
         if delta is not None:
-            metrics['mape'] = BasicModel.mean_absolute_percentage_error(y_true, y_pred, delta)
-            metrics['mape_1'] = BasicModel.mean_absolute_percentage_error(y_true[:, 0], y_pred[:, 0], delta[:, 0])
-            metrics['mape_2'] = BasicModel.mean_absolute_percentage_error(y_true[:, 1], y_pred[:, 1], delta[:, 1])
+            metrics['mape'] = BasicLRModel.mean_absolute_percentage_error(y_true, y_pred, delta)
+            metrics['mape_1'] = BasicLRModel.mean_absolute_percentage_error(y_true[:, 0], y_pred[:, 0], delta[:, 0])
+            metrics['mape_2'] = BasicLRModel.mean_absolute_percentage_error(y_true[:, 1], y_pred[:, 1], delta[:, 1])
         return metrics
 
     @staticmethod
