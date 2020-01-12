@@ -25,13 +25,14 @@ class LRModel(BasicLRModel):
             X = self.scaler.fit_transform(X)
         self.model.fit(X, y)
 
-    def predict(self, X_test) -> np.array:
+    def predict(self, X_test: np.array or list) -> np.array:
         """
         Predict using trained model
         :param X_test: test data, shape = (Sample number, Feature number)
         :return: a array with exactly 2 number: temperature of region 1 and temperature of region 2
         """
         super().predict(X_test)
+        X_test = np.array(X_test)
         if X_test.ndim == 1:
             X_test = X_test.reshape((1, len(X_test)))
 
@@ -49,7 +50,7 @@ class LRModel(BasicLRModel):
     def load(self, loaded_path: str):
         super().load(loaded_path)
         self.model = load(loaded_path + '.joblib')
-        self.model = load(loaded_path + '.pkl')
+        self.scaler = load(loaded_path + '.pkl')
 
     def train_validate(self, X, y, delta=None, mapping=None, test_size=0.2) -> dict:
         super().train_validate(X, y, delta, test_size)

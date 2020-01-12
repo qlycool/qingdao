@@ -3,7 +3,8 @@ import numpy as np
 
 from src.manager.model_manager import load_best_model_prefix
 from src.data_processing.processing import read_data, data_clean, split_data_by_brand, generate_all_training_data, generate_validation_data, \
-    predict_head, generate_head_dict, STABLE_UNAVAILABLE, TRANSITION_FEATURE_RANGE, TRANSITION_SIZE
+    predict_head, generate_head_dict, STABLE_UNAVAILABLE, TRANSITION_FEATURE_RANGE, FEATURE_RANGE, SPLIT_NUM, TRANSITION_SPLIT_NUM, \
+    feature_column
 from src.model.head import HeadModel
 from src.model.lr_model import LRModel
 from flask import Flask, jsonify, request
@@ -74,7 +75,57 @@ def validate(data_per_batch: pd.DataFrame) -> np.array:
     return pred
 
 
-def predict() -> np.array:
-    head_end = STABLE_UNAVAILABLE + TRANSITION_FEATURE_RANGE
-    transition_end = TRANSITION_SIZE
-    pass
+@app.route('/api/predict', methods=["POST"])
+def predict():
+    data = request.get_json()
+    time = data['time']
+    batch = data['batch']
+    index = data['index']
+    stage = data['stage']
+    brand = data['brand']
+    features = data['features']
+
+    if stage == 'produce':
+        if len(features) != len(feature_column) * 5 * SPLIT_NUM:
+            raise Exception('len(features) wrong')
+        pred = model_produce.predict(features)
+    elif stage == 'transition':
+        if len(features) != len(feature_column) * 5 * TRANSITION_SPLIT_NUM:
+            raise Exception('len(features) wrong')
+        pred = model_transition.predict(features)
+    elif stage == 'head':
+        pred = model_head.predict(brand, index)
+    else:
+        raise Exception('param error')
+
+    pred = pred.ravel()
+
+    return jsonify({
+        'brand': brand,
+        'batch': batch,
+        'tempRegion1': pred[0],
+        'tempRegion2': pred[1],
+        'time': time,
+        'version': '1',
+        'deviceStatus': 'deviceStatus'
+    })
+
+
+@app.route('/api/load_model_config')
+def api_load_model_config():
+    stage = request.args.get("stage")
+    if stage == 'produce':
+        return jsonify({'window_size': FEATURE_RANGE, 'block_size': int(FEATURE_RANGE / SPLIT_NUM)})
+    elif stage == 'transition':
+        return jsonify({'window_size': TRANSITION_FEATURE_RANGE, 'block_size': int(TRANSITION_FEATURE_RANGE / TRANSITION_SPLIT_NUM)})
+    else:
+        raise Exception('param error')
+
+
+if __name__ == '__main__':
+    create_dir(MODEL_SAVE_DIR)
+
+    model_produce.load(MODEL_SAVE_DIR + load_best_model_prefix('produce'))
+    model_transition.load(MODEL_SAVE_DIR + load_best_model_prefix('transition'))
+
+    app.run(host='0.0.0.0', debug=True)
