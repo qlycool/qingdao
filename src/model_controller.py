@@ -20,7 +20,7 @@ model_transition = LRModel()
 model_head = HeadModel(STABLE_UNAVAILABLE + TRANSITION_FEATURE_RANGE)
 
 
-def api_load_current_model_name() -> str:
+def api_load_current_model_name():
     return jsonify(load_current_model_prefix('produce'))
 
 
@@ -111,6 +111,11 @@ def predict():
     })
 
 
+@app.route('/api/test')
+def test():
+    return 'Ok'
+
+
 @app.route('/api/load_model_config')
 def api_load_model_config():
     stage = request.args.get("stage")
@@ -128,4 +133,4 @@ if __name__ == '__main__':
     model_produce.load(MODEL_SAVE_DIR + load_best_model_prefix('produce'))
     model_transition.load(MODEL_SAVE_DIR + load_best_model_prefix('transition'))
 
-    app.run(host='0.0.0.0', debug=True)
+    app.run(host='0.0.0.0')

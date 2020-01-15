@@ -3,10 +3,10 @@ PORT = 5000
 
 package :
 	pip download -r $(INSTALL_HOME)/requirements.txt -d $(INSTALL_HOME)/requirements
-	zip -r ~/hongsi_deploy.zip ./*
+	zip -r $(INSTALL_HOME)/hongsi_deploy.zip ./*
 
 install : $(INSTALL_HOME)/requirements.txt $(INSTALL_HOME)/requirements $(INSTALL_HOME)/src/config/config.py
-	pip install --no-index --find-links=$(INSTALL_HOME)/requirements -r $(INSTALL_HOME)/requirements.txt
+	pip install --ignore-installed --no-index --find-links=$(INSTALL_HOME)/requirements -r $(INSTALL_HOME)/requirements.txt
 	sed -i "s?^ROOT_PATH.*?ROOT_PATH = '$(INSTALL_HOME)'?g" $(INSTALL_HOME)/src/config/config.py
 run :
 	export PYTHONPATH=$(PYTHONPATH):$(INSTALL_HOME) && \
@@ -20,4 +20,4 @@ stop :
 	rm pid.txt
 
 clean :
-	pip uninstall -yr $(INSTALL_HOME)/requirements.txt	
+	pip uninstall -yr $(INSTALL_HOME)/requirements.txt
