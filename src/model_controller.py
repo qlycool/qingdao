@@ -75,6 +75,11 @@ def validate(data_per_batch: pd.DataFrame) -> np.array:
     return pred
 
 
+@app.route('/api/test')
+def test():
+    return 'Ok'
+
+
 @app.route('/api/predict', methods=["POST"])
 def predict():
     data = request.get_json()
@@ -109,11 +114,6 @@ def predict():
         'version': '1',
         'deviceStatus': 'deviceStatus'
     })
-
-
-@app.route('/api/test')
-def test():
-    return 'Ok'
 
 
 @app.route('/api/load_model_config')
